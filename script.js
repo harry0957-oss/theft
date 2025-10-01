@@ -130,6 +130,11 @@ if (descriptionSearchInput) {
     descriptionSearchInput.addEventListener('input', handleSearchInput);
     descriptionSearchInput.addEventListener('focus', () => updateSearchSuggestions(state.filters.searchTerm));
 }
+if (filtersForm) {
+    filtersForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+    });
+}
 if (exportButton) {
     exportButton.addEventListener('click', exportDataSnapshot);
 }
