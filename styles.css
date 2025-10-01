@@ -85,6 +85,42 @@ body {
     gap: 1rem;
 }
 
+.data-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.ghost-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.6);
+    color: var(--text);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ghost-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px -18px rgba(96, 165, 250, 0.7);
+}
+
+.ghost-button input {
+    display: none;
+}
+
+.data-hint {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
 .upload-button {
     display: inline-flex;
     align-items: center;
@@ -153,6 +189,7 @@ body {
 }
 
 input[type="text"],
+input[type="search"],
 input[type="date"],
 input[type="month"],
 input[type="number"],
@@ -183,6 +220,10 @@ button.primary {
 button.secondary {
     background: rgba(148, 163, 184, 0.15);
     color: var(--text);
+}
+
+button.pill {
+    border-radius: 999px;
 }
 
 button:hover {
@@ -216,6 +257,10 @@ button:hover {
     flex-direction: column;
     gap: 0.4rem;
     min-width: 140px;
+}
+
+.filter-search {
+    flex: 1 1 220px;
 }
 
 .filter-group legend {
@@ -341,6 +386,12 @@ tbody tr.selected {
     color: var(--muted);
 }
 
+.chart-grid {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
 .chart-wrapper {
     position: relative;
     min-height: 320px;
@@ -374,5 +425,9 @@ tbody tr.selected {
 
     .bulk-actions button {
         width: 100%;
+    }
+
+    .chart-grid {
+        grid-template-columns: 1fr;
     }
 }

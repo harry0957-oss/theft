@@ -1,30 +1,91 @@
-const state = {
-    files: new Map(),
-    transactions: [],
-    categories: new Set([
-        'Uncategorised',
-        'Housing',
-        'Utilities',
-        'Groceries',
-        'Transport',
-        'Entertainment',
-        'Subscriptions',
-        'Health',
-        'Savings',
-        'Income'
-    ]),
-    selection: new Set(),
-    filters: {
+const DEFAULT_CATEGORIES = [
+    'Uncategorised',
+    'Housing',
+    'Utilities',
+    'Groceries',
+    'Transport',
+    'Entertainment',
+    'Subscriptions',
+    'Health',
+    'Savings',
+    'Income'
+];
+
+const CATEGORY_RULES = [
+    {
+        category: 'Income',
+        keywords: ['SALARY', 'PAYROLL', 'PAYCHEQUE', 'PAYCHECK', 'WAGES', 'HMRC', 'DIVIDEND', 'BONUS'],
+        predicate: tx => tx.credit > tx.debit
+    },
+    {
+        category: 'Groceries',
+        keywords: ['TESCO', 'SAINSBURY', 'ASDA', 'ALDI', 'LIDL', 'WAITROSE', 'MORRISONS', 'ICELAND', 'CO-OP']
+    },
+    {
+        category: 'Transport',
+        keywords: ['UBER', 'LYFT', 'TFL', 'TRAINLINE', 'NATIONAL RAIL', 'STAGECOACH', 'AVANTI', 'SHELL', 'BP', 'ESSO']
+    },
+    {
+        category: 'Entertainment',
+        keywords: ['CINEMA', 'THEATRE', 'BOWLING', 'CONCERT', 'EVENTBRITE']
+    },
+    {
+        category: 'Subscriptions',
+        keywords: ['SPOTIFY', 'NETFLIX', 'DISNEY', 'APPLE MUSIC', 'GOOGLE', 'AMAZON PRIME', 'MICROSOFT', 'ADOBE']
+    },
+    {
+        category: 'Health',
+        keywords: ['BOOT', 'PHARMACY', 'DENTAL', 'OPTICAL', 'DOCTOR', 'CLINIC']
+    },
+    {
+        category: 'Utilities',
+        keywords: ['BRITISH GAS', 'EDF', 'EON', 'OCTOPUS', 'SCOTTISH POWER', 'THAMES WATER', 'UNITED UTILITIES', 'VIRGIN MEDIA', 'SKY']
+    },
+    {
+        category: 'Housing',
+        keywords: ['RENT', 'MORTGAGE', 'LANDLORD', 'ESTATE', 'COUNCIL TAX']
+    },
+    {
+        category: 'Savings',
+        keywords: ['SAVINGS', 'ISA', 'INVESTMENT', 'VANGUARD', 'ETRADE', 'ROBINHOOD']
+    }
+];
+
+const CHART_COLOURS = [
+    '#60a5fa',
+    '#34d399',
+    '#fbbf24',
+    '#f87171',
+    '#a78bfa',
+    '#f472b6',
+    '#38bdf8',
+    '#facc15',
+    '#fb7185',
+    '#4ade80'
+];
+
+function createEmptyFilters() {
+    return {
         startDate: '',
         endDate: '',
         types: new Set(),
-        categories: new Set()
-    }
+        categories: new Set(),
+        searchTerm: ''
+    };
+}
+
+const state = {
+    files: new Map(),
+    transactions: [],
+    categories: new Set(DEFAULT_CATEGORIES),
+    selection: new Set(),
+    filters: createEmptyFilters()
 };
 
 let fileCounter = 0;
 let transactionCounter = 0;
-let chartInstance = null;
+let barChartInstance = null;
+let pieChartInstance = null;
 
 const fileInput = document.getElementById('file-input');
 const fileList = document.getElementById('file-list');
@@ -51,6 +112,10 @@ const bulkCategorySelect = document.getElementById('bulk-category');
 const applyBulkButton = document.getElementById('apply-bulk');
 const selectionCount = document.getElementById('selection-count');
 const emptyState = document.getElementById('empty-state');
+const descriptionSearchInput = document.getElementById('description-search');
+const descriptionSuggestions = document.getElementById('description-suggestions');
+const exportButton = document.getElementById('export-data');
+const restoreInput = document.getElementById('restore-input');
 
 fileInput.addEventListener('change', handleFileSelection);
 categoryForm.addEventListener('submit', handleAddCategory);
@@ -61,10 +126,20 @@ paydayForm.addEventListener('submit', handlePaydaySubmit);
 selectAllCheckbox.addEventListener('change', handleSelectAll);
 applyBulkButton.addEventListener('click', applyBulkCategory);
 
+if (descriptionSearchInput) {
+    descriptionSearchInput.addEventListener('input', handleSearchInput);
+    descriptionSearchInput.addEventListener('focus', () => updateSearchSuggestions(state.filters.searchTerm));
+}
+if (exportButton) {
+    exportButton.addEventListener('click', exportDataSnapshot);
+}
+if (restoreInput) {
+    restoreInput.addEventListener('change', handleRestoreSnapshot);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    renderCategoryPills();
-    refreshCategorySelects();
-    renderFilterOptions();
+    refreshCategoriesUI();
+    refreshTypeFilterOptions();
     render();
 });
 
@@ -105,7 +180,10 @@ function parseCsv(file) {
             });
 
             state.transactions.push(...parsedTransactions);
+            parsedTransactions.forEach(tx => state.categories.add(tx.category));
+
             renderFileList();
+            refreshCategoriesUI();
             refreshTypeFilterOptions();
             render();
         }
@@ -135,6 +213,7 @@ function normaliseRow(row, fileId, fileName) {
     const debit = hasDebit ? parseAmount(debitRaw) : 0;
     const credit = hasCredit ? parseAmount(creditRaw) : 0;
     const balance = hasBalance ? parseAmount(balanceRaw) : null;
+    const category = inferCategory({ description, type, debit, credit });
 
     return {
         id: `tx-${++transactionCounter}`,
@@ -149,7 +228,7 @@ function normaliseRow(row, fileId, fileName) {
         hasDebit,
         hasCredit,
         hasBalance,
-        category: 'Uncategorised'
+        category
     };
 }
 
@@ -183,6 +262,27 @@ function hasNumericValue(value) {
         return false;
     }
     return String(value).trim() !== '';
+}
+
+function inferCategory(tx) {
+    const descriptionText = (tx.description || '').toUpperCase();
+    const typeText = (tx.type || '').toUpperCase();
+    const haystack = `${typeText} ${descriptionText}`;
+
+    for (const rule of CATEGORY_RULES) {
+        if (rule.predicate && !rule.predicate(tx)) {
+            continue;
+        }
+        if (rule.keywords.some(keyword => keyword && haystack.includes(keyword))) {
+            return rule.category;
+        }
+    }
+
+    if (tx.credit > 0 && tx.credit >= tx.debit) {
+        return 'Income';
+    }
+
+    return 'Uncategorised';
 }
 
 function renderFileList() {
@@ -220,9 +320,7 @@ function handleAddCategory(event) {
     }
     state.categories.add(value);
     categoryInput.value = '';
-    renderCategoryPills();
-    refreshCategorySelects();
-    renderFilterOptions();
+    refreshCategoriesUI();
     render();
 }
 
@@ -254,6 +352,12 @@ function refreshCategorySelects() {
     bulkCategorySelect.innerHTML = categories
         .map(category => `<option value="${category}">${category}</option>`)
         .join('');
+}
+
+function refreshCategoriesUI() {
+    renderCategoryPills();
+    refreshCategorySelects();
+    refreshCategoryFilterOptions();
 }
 
 function renderFilterOptions() {
@@ -302,18 +406,247 @@ function toggleFilterSet(set, value) {
     render();
 }
 
+function handleSearchInput(event) {
+    const value = event.target.value.trim();
+    updateFilter('searchTerm', value);
+}
+
+function updateSearchSuggestions(query = '') {
+    if (!descriptionSuggestions) {
+        return;
+    }
+
+    const counts = new Map();
+    state.transactions.forEach(tx => {
+        const description = (tx.description || '').trim();
+        if (!description) {
+            return;
+        }
+        counts.set(description, (counts.get(description) ?? 0) + 1);
+    });
+
+    const normalisedQuery = query.trim().toLowerCase();
+    const matches = Array.from(counts.entries())
+        .map(([description, count]) => {
+            const lower = description.toLowerCase();
+            let rank = 2;
+            if (!normalisedQuery) {
+                rank = 0;
+            } else if (lower.startsWith(normalisedQuery)) {
+                rank = 0;
+            } else if (lower.includes(normalisedQuery)) {
+                rank = 1;
+            }
+            return { description, count, rank };
+        })
+        .filter(item => !normalisedQuery || item.rank < 2)
+        .sort((a, b) => a.rank - b.rank || b.count - a.count || a.description.localeCompare(b.description))
+        .slice(0, 12);
+
+    descriptionSuggestions.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    matches.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item.description;
+        fragment.appendChild(option);
+    });
+    descriptionSuggestions.appendChild(fragment);
+}
+
+function exportDataSnapshot() {
+    const snapshot = buildSnapshot();
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const dateStamp = new Date().toISOString().split('T')[0];
+    anchor.href = url;
+    anchor.download = `financial-tracker-${dateStamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+}
+
+function buildSnapshot() {
+    return {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        categories: Array.from(state.categories),
+        files: Array.from(state.files.values()).map(file => ({ ...file })),
+        filters: {
+            startDate: state.filters.startDate,
+            endDate: state.filters.endDate,
+            searchTerm: state.filters.searchTerm,
+            types: Array.from(state.filters.types),
+            categories: Array.from(state.filters.categories)
+        },
+        transactions: state.transactions.map(tx => ({
+            id: tx.id,
+            fileId: tx.fileId,
+            fileName: tx.fileName,
+            date: tx.date.toISOString(),
+            type: tx.type,
+            description: tx.description,
+            debit: tx.debit,
+            credit: tx.credit,
+            balance: tx.balance,
+            hasDebit: tx.hasDebit,
+            hasCredit: tx.hasCredit,
+            hasBalance: tx.hasBalance,
+            category: tx.category
+        }))
+    };
+}
+
+function handleRestoreSnapshot(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const data = JSON.parse(reader.result);
+            applySnapshot(data);
+        } catch (error) {
+            console.error('Unable to restore snapshot', error);
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsText(file);
+}
+
+function applySnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') {
+        return;
+    }
+
+    const transactions = Array.isArray(snapshot.transactions)
+        ? snapshot.transactions
+              .map(parseSnapshotTransaction)
+              .filter(Boolean)
+        : [];
+
+    state.transactions = transactions;
+
+    const snapshotCategories = Array.isArray(snapshot.categories) ? snapshot.categories : [];
+    state.categories = new Set([...DEFAULT_CATEGORIES, ...snapshotCategories]);
+    state.transactions.forEach(tx => state.categories.add(tx.category));
+
+    const filesMap = new Map();
+    if (Array.isArray(snapshot.files)) {
+        snapshot.files.forEach(file => {
+            if (file && file.id) {
+                filesMap.set(file.id, { ...file, count: 0 });
+            }
+        });
+    }
+
+    state.transactions.forEach(tx => {
+        const existing = filesMap.get(tx.fileId) ?? { id: tx.fileId, name: tx.fileName, count: 0 };
+        existing.name = tx.fileName || existing.name;
+        existing.count = (existing.count ?? 0) + 1;
+        filesMap.set(existing.id, existing);
+    });
+
+    state.files = filesMap;
+
+    transactionCounter = state.transactions.reduce((max, tx) => Math.max(max, extractCounter(tx.id, 'tx-')), 0);
+    fileCounter = 0;
+    state.files.forEach(file => {
+        fileCounter = Math.max(fileCounter, extractCounter(file.id, 'file-'));
+    });
+
+    state.selection.clear();
+    renderFileList();
+    refreshCategoriesUI();
+    refreshTypeFilterOptions();
+
+    const availableTypes = new Set(state.transactions.map(tx => tx.type).filter(Boolean));
+    const availableCategories = new Set(state.categories);
+
+    if (snapshot.filters && typeof snapshot.filters === 'object') {
+        const filters = createEmptyFilters();
+        filters.startDate = snapshot.filters.startDate || '';
+        filters.endDate = snapshot.filters.endDate || '';
+        filters.searchTerm = snapshot.filters.searchTerm || '';
+        (Array.isArray(snapshot.filters.types) ? snapshot.filters.types : []).forEach(type => {
+            if (availableTypes.has(type)) {
+                filters.types.add(type);
+            }
+        });
+        (Array.isArray(snapshot.filters.categories) ? snapshot.filters.categories : []).forEach(category => {
+            if (availableCategories.has(category)) {
+                filters.categories.add(category);
+            }
+        });
+        state.filters = filters;
+        startDateInput.value = filters.startDate;
+        endDateInput.value = filters.endDate;
+        descriptionSearchInput.value = filters.searchTerm;
+    } else {
+        state.filters = createEmptyFilters();
+        startDateInput.value = '';
+        endDateInput.value = '';
+        descriptionSearchInput.value = '';
+    }
+
+    paydayNote.textContent = '';
+    renderFilterOptions();
+    render();
+}
+
+function parseSnapshotTransaction(raw) {
+    if (!raw || typeof raw !== 'object' || !raw.id || !raw.fileId || !raw.date) {
+        return null;
+    }
+
+    const date = new Date(raw.date);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const debit = Number.parseFloat(raw.debit) || 0;
+    const credit = Number.parseFloat(raw.credit) || 0;
+    const balance = raw.balance === null || raw.balance === undefined ? null : Number.parseFloat(raw.balance);
+
+    return {
+        id: raw.id,
+        fileId: raw.fileId,
+        fileName: raw.fileName || 'Imported snapshot',
+        date,
+        type: raw.type || '',
+        description: raw.description || '',
+        debit,
+        credit,
+        balance,
+        hasDebit: raw.hasDebit !== undefined ? Boolean(raw.hasDebit) : debit !== 0,
+        hasCredit: raw.hasCredit !== undefined ? Boolean(raw.hasCredit) : credit !== 0,
+        hasBalance: raw.hasBalance !== undefined ? Boolean(raw.hasBalance) : balance !== null,
+        category: raw.category || 'Uncategorised'
+    };
+}
+
+function extractCounter(id, prefix) {
+    if (typeof id !== 'string' || !id.startsWith(prefix)) {
+        return 0;
+    }
+    const numeric = Number.parseInt(id.slice(prefix.length), 10);
+    return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function updateFilter(key, value) {
     state.filters[key] = value;
     render();
 }
 
 function resetFilters() {
-    state.filters.startDate = '';
-    state.filters.endDate = '';
-    state.filters.types.clear();
-    state.filters.categories.clear();
+    state.filters = createEmptyFilters();
     startDateInput.value = '';
     endDateInput.value = '';
+    descriptionSearchInput.value = '';
     paydayNote.textContent = '';
     renderFilterOptions();
     render();
@@ -365,6 +698,13 @@ function applyFilters(transactions) {
                 return false;
             }
         }
+        if (state.filters.searchTerm) {
+            const query = state.filters.searchTerm.toLowerCase();
+            const description = (tx.description || '').toLowerCase();
+            if (!description.includes(query)) {
+                return false;
+            }
+        }
         if (state.filters.types.size && !state.filters.types.has(tx.type)) {
             return false;
         }
@@ -380,8 +720,12 @@ function render() {
     filteredTransactions.sort((a, b) => b.date - a.date);
     renderTransactions(filteredTransactions);
     renderSummary(filteredTransactions);
-    renderChart(filteredTransactions);
+    renderCharts(filteredTransactions);
     updateSelectionState(filteredTransactions);
+    if (descriptionSearchInput) {
+        descriptionSearchInput.value = state.filters.searchTerm;
+    }
+    updateSearchSuggestions(state.filters.searchTerm);
 }
 
 function renderTransactions(transactions) {
@@ -419,8 +763,7 @@ function renderTransactions(transactions) {
         });
         if (!state.categories.has(tx.category)) {
             state.categories.add(tx.category);
-            refreshCategorySelects();
-            renderFilterOptions();
+            refreshCategoriesUI();
         }
         select.value = tx.category;
         select.addEventListener('change', () => {
@@ -471,27 +814,42 @@ function renderSummary(transactions) {
     summaryNet.classList.toggle('negative', net < 0);
 }
 
-function renderChart(transactions) {
-    const canvas = document.getElementById('category-chart');
+function renderCharts(transactions) {
     const spendingByCategory = new Map();
 
     transactions.forEach(tx => {
-        const amount = tx.debit;
-        if (!amount) {
+        if (!tx.debit) {
             return;
         }
         const current = spendingByCategory.get(tx.category) ?? 0;
-        spendingByCategory.set(tx.category, current + amount);
+        spendingByCategory.set(tx.category, current + tx.debit);
     });
 
     const labels = Array.from(spendingByCategory.keys());
     const data = Array.from(spendingByCategory.values());
 
-    if (chartInstance) {
-        chartInstance.destroy();
+    drawBarChart(labels, data);
+    drawPieChart(labels, data);
+}
+
+function drawBarChart(labels, data) {
+    const canvas = document.getElementById('category-chart');
+    if (!canvas) {
+        return;
     }
 
-    chartInstance = new Chart(canvas, {
+    if (barChartInstance) {
+        barChartInstance.destroy();
+        barChartInstance = null;
+    }
+
+    if (!labels.length) {
+        const context = canvas.getContext('2d');
+        context?.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+
+    barChartInstance = new Chart(canvas, {
         type: 'bar',
         data: {
             labels,
@@ -499,8 +857,8 @@ function renderChart(transactions) {
                 {
                     label: 'Debit total (£)',
                     data,
-                    backgroundColor: 'rgba(96, 165, 250, 0.6)',
-                    borderColor: 'rgba(96, 165, 250, 1)',
+                    backgroundColor: labels.map((_, index) => `${CHART_COLOURS[index % CHART_COLOURS.length]}99`),
+                    borderColor: labels.map((_, index) => CHART_COLOURS[index % CHART_COLOURS.length]),
                     borderWidth: 1,
                     borderRadius: 12
                 }
@@ -510,10 +868,22 @@ function renderChart(transactions) {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
+                x: {
+                    ticks: {
+                        color: '#e2e8f0'
+                    },
+                    grid: {
+                        color: 'rgba(148, 163, 184, 0.15)'
+                    }
+                },
                 y: {
                     beginAtZero: true,
                     ticks: {
+                        color: '#e2e8f0',
                         callback: value => `£${value}`
+                    },
+                    grid: {
+                        color: 'rgba(148, 163, 184, 0.15)'
                     }
                 }
             },
@@ -524,6 +894,62 @@ function renderChart(transactions) {
                 tooltip: {
                     callbacks: {
                         label: context => `£${context.parsed.y.toFixed(2)}`
+                    }
+                }
+            }
+        }
+    });
+}
+
+function drawPieChart(labels, data) {
+    const canvas = document.getElementById('category-pie-chart');
+    if (!canvas) {
+        return;
+    }
+
+    if (pieChartInstance) {
+        pieChartInstance.destroy();
+        pieChartInstance = null;
+    }
+
+    if (!labels.length) {
+        const context = canvas.getContext('2d');
+        context?.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+
+    const total = data.reduce((sum, value) => sum + value, 0) || 1;
+
+    pieChartInstance = new Chart(canvas, {
+        type: 'pie',
+        data: {
+            labels,
+            datasets: [
+                {
+                    data,
+                    backgroundColor: labels.map((_, index) => `${CHART_COLOURS[index % CHART_COLOURS.length]}cc`),
+                    borderColor: 'rgba(15, 23, 42, 0.3)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#e2e8f0'
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const value = context.parsed;
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${context.label}: £${value.toFixed(2)} (${percentage}%)`;
+                        }
                     }
                 }
             }
