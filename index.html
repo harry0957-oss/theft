@@ -30,6 +30,14 @@
                     <span>Choose CSV files</span>
                 </label>
                 <ul id="file-list" class="file-list" aria-live="polite"></ul>
+                <div class="data-actions">
+                    <button type="button" id="export-data" class="secondary pill">Download snapshot</button>
+                    <label class="ghost-button">
+                        <input type="file" id="restore-input" accept="application/json,.json" />
+                        <span>Restore snapshot</span>
+                    </label>
+                </div>
+                <p class="data-hint">Snapshots let you export your categorised data and load it again later.</p>
             </div>
         </section>
 
@@ -59,6 +67,11 @@
                 <div class="filter-group">
                     <label for="end-date">To</label>
                     <input type="date" id="end-date" />
+                </div>
+                <div class="filter-group filter-search">
+                    <label for="description-search">Search description</label>
+                    <input type="search" id="description-search" placeholder="Type to filter by name" list="description-suggestions" autocomplete="off" />
+                    <datalist id="description-suggestions"></datalist>
                 </div>
                 <fieldset class="filter-group">
                     <legend>Transaction type</legend>
@@ -161,8 +174,13 @@
             <div class="card-header">
                 <h2 id="chart-title">Spending by category</h2>
             </div>
-            <div class="chart-wrapper">
-                <canvas id="category-chart" aria-label="Spending by category"></canvas>
+            <div class="chart-grid">
+                <div class="chart-wrapper">
+                    <canvas id="category-chart" aria-label="Spending by category (bar chart)"></canvas>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="category-pie-chart" aria-label="Spending share by category"></canvas>
+                </div>
             </div>
         </section>
     </main>
