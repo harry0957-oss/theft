@@ -1118,5 +1118,18 @@ function clearSelection() {
     if (state.selection.size === 0) {
         return;
     }
+
     state.selection.clear();
+
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+    selectionCount.textContent = '0 selected';
+
+    transactionsBody.querySelectorAll('tr.selected').forEach(row => {
+        row.classList.remove('selected');
+    });
+
+    transactionsBody.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = false;
+    });
 }
