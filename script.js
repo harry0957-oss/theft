@@ -412,8 +412,8 @@ function toggleFilterSet(set, value) {
 }
 
 function handleSearchInput(event) {
-    const value = event.target.value.trim();
-    updateFilter('searchTerm', value);
+    const { value } = event.target;
+    updateFilter('searchTerm', value.trim() ? value : '');
 }
 
 function updateSearchSuggestions(query = '') {
