@@ -64,6 +64,12 @@ const CHART_COLOURS = [
     '#4ade80'
 ];
 
+const STORAGE_KEYS = {
+    CATEGORY_MEMORY: 'financial-tracker-category-memory'
+};
+
+const categoryMemory = loadCategoryMemory();
+
 function createEmptyFilters() {
     return {
         startDate: '',
@@ -270,6 +276,11 @@ function hasNumericValue(value) {
 }
 
 function inferCategory(tx) {
+    const stored = getStoredCategory(tx.description);
+    if (stored) {
+        return stored;
+    }
+
     const descriptionText = (tx.description || '').toUpperCase();
     const typeText = (tx.type || '').toUpperCase();
     const haystack = `${typeText} ${descriptionText}`;
@@ -403,6 +414,7 @@ function refreshCategoryFilterOptions() {
 }
 
 function toggleFilterSet(set, value) {
+    clearSelection();
     if (set.has(value)) {
         set.delete(value);
     } else {
@@ -476,6 +488,7 @@ function buildSnapshot() {
     return {
         version: 1,
         generatedAt: new Date().toISOString(),
+        categoryMemory: Array.from(categoryMemory.entries()),
         categories: Array.from(state.categories),
         files: Array.from(state.files.values()).map(file => ({ ...file })),
         filters: {
@@ -526,6 +539,10 @@ function handleRestoreSnapshot(event) {
 function applySnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') {
         return;
+    }
+
+    if (Array.isArray(snapshot.categoryMemory)) {
+        restoreCategoryMemory(snapshot.categoryMemory);
     }
 
     const transactions = Array.isArray(snapshot.transactions)
@@ -643,11 +660,13 @@ function extractCounter(id, prefix) {
 }
 
 function updateFilter(key, value) {
+    clearSelection();
     state.filters[key] = value;
     render();
 }
 
 function resetFilters() {
+    clearSelection();
     state.filters = createEmptyFilters();
     startDateInput.value = '';
     endDateInput.value = '';
@@ -773,6 +792,7 @@ function renderTransactions(transactions) {
         select.value = tx.category;
         select.addEventListener('change', () => {
             tx.category = select.value;
+            rememberCategory(tx.description, tx.category);
             render();
         });
         categoryCell.appendChild(select);
@@ -1004,7 +1024,99 @@ function applyBulkCategory() {
     state.transactions.forEach(tx => {
         if (state.selection.has(tx.id)) {
             tx.category = category;
+            rememberCategory(tx.description, category);
         }
     });
     render();
+}
+
+function normaliseCategoryKey(description) {
+    return (description || '').trim().toUpperCase();
+}
+
+function getStoredCategory(description) {
+    const key = normaliseCategoryKey(description);
+    if (!key) {
+        return undefined;
+    }
+    return categoryMemory.get(key);
+}
+
+function rememberCategory(description, category) {
+    const key = normaliseCategoryKey(description);
+    if (!key) {
+        return;
+    }
+    if (!category || category === 'Uncategorised') {
+        if (categoryMemory.has(key)) {
+            categoryMemory.delete(key);
+            persistCategoryMemory();
+        }
+        return;
+    }
+    categoryMemory.set(key, category);
+    persistCategoryMemory();
+}
+
+function restoreCategoryMemory(entries) {
+    categoryMemory.clear();
+    entries.forEach(entry => {
+        if (!Array.isArray(entry) || entry.length < 2) {
+            return;
+        }
+        const [key, category] = entry;
+        if (typeof key === 'string' && typeof category === 'string' && category && category !== 'Uncategorised') {
+            categoryMemory.set(key, category);
+        }
+    });
+    persistCategoryMemory();
+}
+
+function loadCategoryMemory() {
+    if (typeof localStorage === 'undefined') {
+        return new Map();
+    }
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.CATEGORY_MEMORY);
+        if (!raw) {
+            return new Map();
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+            return new Map();
+        }
+        const memory = new Map();
+        parsed.forEach(entry => {
+            if (!Array.isArray(entry) || entry.length < 2) {
+                return;
+            }
+            const [key, category] = entry;
+            if (typeof key === 'string' && typeof category === 'string' && category && category !== 'Uncategorised') {
+                memory.set(key, category);
+            }
+        });
+        return memory;
+    } catch (error) {
+        console.error('Unable to load saved categories', error);
+        return new Map();
+    }
+}
+
+function persistCategoryMemory() {
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+    try {
+        const serialised = JSON.stringify(Array.from(categoryMemory.entries()));
+        localStorage.setItem(STORAGE_KEYS.CATEGORY_MEMORY, serialised);
+    } catch (error) {
+        console.error('Unable to save category memory', error);
+    }
+}
+
+function clearSelection() {
+    if (state.selection.size === 0) {
+        return;
+    }
+    state.selection.clear();
 }
