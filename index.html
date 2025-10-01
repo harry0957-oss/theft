@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Financial Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <script src="script.js" type="module" defer></script>
+</head>
+<body>
+    <header class="app-header">
+        <h1>Financial Tracker</h1>
+        <p>Upload, categorise, and analyse your bank transactions with ease.</p>
+    </header>
+
+    <main class="layout">
+        <section class="card" aria-labelledby="upload-title">
+            <div class="card-header">
+                <h2 id="upload-title">Import statements</h2>
+                <p>Upload one or multiple CSV statements to get started.</p>
+            </div>
+            <div class="upload-area">
+                <label class="upload-button">
+                    <input type="file" id="file-input" accept=".csv" multiple />
+                    <span>Choose CSV files</span>
+                </label>
+                <ul id="file-list" class="file-list" aria-live="polite"></ul>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="category-title">
+            <div class="card-header">
+                <h2 id="category-title">Manage categories</h2>
+                <p>Create custom categories for your spending and income.</p>
+            </div>
+            <form id="category-form" class="category-form">
+                <label for="new-category" class="visually-hidden">New category</label>
+                <input id="new-category" type="text" placeholder="Add a new category" />
+                <button type="submit">Add</button>
+            </form>
+            <div id="category-pills" class="category-pills" aria-live="polite"></div>
+        </section>
+
+        <section class="card" aria-labelledby="filters-title">
+            <div class="card-header">
+                <h2 id="filters-title">Filters</h2>
+                <p>Combine filters to focus on the transactions that matter.</p>
+            </div>
+            <form id="filters" class="filters" autocomplete="off">
+                <div class="filter-group">
+                    <label for="start-date">From</label>
+                    <input type="date" id="start-date" />
+                </div>
+                <div class="filter-group">
+                    <label for="end-date">To</label>
+                    <input type="date" id="end-date" />
+                </div>
+                <fieldset class="filter-group">
+                    <legend>Transaction type</legend>
+                    <div id="type-options" class="chip-group"></div>
+                </fieldset>
+                <fieldset class="filter-group">
+                    <legend>Category</legend>
+                    <div id="category-options" class="chip-group"></div>
+                </fieldset>
+                <button type="button" id="reset-filters" class="secondary">Reset filters</button>
+            </form>
+        </section>
+
+        <section class="card" aria-labelledby="payday-title">
+            <div class="card-header">
+                <h2 id="payday-title">Payday view</h2>
+                <p>Select your payday to analyse the full pay cycle.</p>
+            </div>
+            <form id="payday-form" class="payday-form" autocomplete="off">
+                <div class="filter-group">
+                    <label for="payday-day">Payday (day of month)</label>
+                    <input type="number" id="payday-day" min="1" max="31" placeholder="e.g. 25" />
+                </div>
+                <div class="filter-group">
+                    <label for="payday-month">Month</label>
+                    <input type="month" id="payday-month" />
+                </div>
+                <button type="submit">Apply payday range</button>
+            </form>
+            <p class="payday-note" id="payday-note" aria-live="polite"></p>
+        </section>
+
+        <section class="card card-wide" aria-labelledby="summary-title">
+            <div class="card-header">
+                <h2 id="summary-title">Summary</h2>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <span class="summary-label">Transactions</span>
+                    <span id="summary-count" class="summary-value">0</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Total out</span>
+                    <span id="summary-debit" class="summary-value negative">£0.00</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Total in</span>
+                    <span id="summary-credit" class="summary-value positive">£0.00</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Net</span>
+                    <span id="summary-net" class="summary-value">£0.00</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card card-wide" aria-labelledby="bulk-actions-title">
+            <div class="card-header">
+                <h2 id="bulk-actions-title">Categorise transactions</h2>
+            </div>
+            <div class="bulk-actions">
+                <div class="bulk-controls">
+                    <label for="bulk-category">Apply category to selected</label>
+                    <select id="bulk-category"></select>
+                </div>
+                <button type="button" id="apply-bulk" class="primary">Apply</button>
+                <span id="selection-count" class="selection-count">0 selected</span>
+            </div>
+        </section>
+
+        <section class="card card-wide" aria-labelledby="table-title">
+            <div class="card-header">
+                <h2 id="table-title">Transactions</h2>
+                <p id="table-caption">Select rows to bulk categorise or adjust categories one by one.</p>
+            </div>
+            <div class="table-container">
+                <table aria-describedby="table-caption">
+                    <thead>
+                        <tr>
+                            <th scope="col">
+                                <input type="checkbox" id="select-all" aria-label="Select all" />
+                            </th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Description</th>
+                            <th scope="col">Debit (£)</th>
+                            <th scope="col">Credit (£)</th>
+                            <th scope="col">Balance (£)</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactions-body"></tbody>
+                </table>
+            </div>
+            <p id="empty-state" class="empty-state" hidden>No transactions match your filters.</p>
+        </section>
+
+        <section class="card card-wide" aria-labelledby="chart-title">
+            <div class="card-header">
+                <h2 id="chart-title">Spending by category</h2>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="category-chart" aria-label="Spending by category"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <p>All calculations happen in your browser. Data is never uploaded.</p>
+    </footer>
+</body>
+</html>
