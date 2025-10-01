@@ -1,15 +1,16 @@
 # Financial Tracker
 
-This Streamlit application lets you import multiple bank statement CSV files, categorise your transactions, and analyse spending over custom date ranges or payday cycles.
+This Flask application lets you import one or more bank statement CSV files, filter transactions by type (for example, `BGC` fo
+r salary payments or `FPI` for standing orders), and review income/spending totals directly in the browser.
 
 ## Features
 
-- Upload any number of CSV statements that share the following columns: `Transaction Date`, `Transaction Type`, `Sort Code`, `Account Number`, `Transaction Description`, `Debit Amount`, `Credit Amount`, and `Balance`.
-- Delete previously imported files to remove their transactions from the analysis.
-- Bulk or individually categorise transactions with custom categories.
-- Filter by date range and category to review spending and income.
-- Visualise category totals and daily debit/credit trends.
-- Review a payday cycle (payday to the day before the next payday) to assess monthly financial health.
+- Upload any number of CSV statements that share the following columns: `Transaction Date`, `Transaction Type`, `Sort Code`, `Ac
+count Number`, `Transaction Description`, `Debit Amount`, `Credit Amount`, and `Balance`.
+- See a running table of all imported transactions and the original file each row came from.
+- Filter by transaction type to focus on deposits such as BGC salary payments or FPI transfers.
+- View instant totals for money received, money spent, and the resulting net figure for the filtered data.
+- Clear imported data at any time without restarting the server.
 
 ## Getting started
 
@@ -18,13 +19,14 @@ This Streamlit application lets you import multiple bank statement CSV files, ca
    pip install -r requirements.txt
    ```
 
-2. Run the Streamlit app:
+2. Run the Flask app:
    ```bash
-   streamlit run app.py
+   flask --app app.py run --host=0.0.0.0 --port=8000
    ```
 
-3. Open the provided URL in your browser, upload CSV files, and begin categorising and analysing your transactions.
+3. Open `http://localhost:8000` in your browser, upload CSV files, and filter transactions by type.
 
 ## CSV format
 
-Ensure your CSV files use `DD/MM/YYYY` for the transaction date and contain the columns listed above. Monetary values can include the `£` symbol and commas; they are cleaned during import.
+Ensure your CSV files use `DD/MM/YYYY` for the transaction date and contain the columns listed above. Monetary values can includ
+e the `£` symbol and commas; they are cleaned during import.
